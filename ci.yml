@@ -1,0 +1,75 @@
+# docker-compose -f ci.yml build
+# docker-compose -f ci.yml --env-file .cienv up -d
+
+version: '3.7'
+
+volumes:
+  gocd_pg:
+    name: gocd_pg
+  gocd_artifacts:
+    name: gocd_artifacts
+
+networks:
+  ci:
+    name: ci
+
+services:
+  db:
+    image: postgres:12.3
+    environment:
+      - POSTGRES_DB=${DB_NAME:-gocd}
+      - POSTGRES_USER=${DB_USERNAME:-admin}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-pwd123}
+    volumes:
+      - gocd_pg:/var/lib/postgresql/data:z
+    restart: unless-stopped
+    networks:
+      - ci
+
+  gocd-server:
+      container_name: gocd-server
+      hostname: ci
+      environment:
+        - DB_USERNAME=${DB_USERNAME:-admin}
+        - DB_PASSWORD=${DB_PASSWORD:-pwd123}
+        - AGENT_REGISTER_KEY=${AGENT_REGISTER_KEY}
+      build:
+        context: gocd
+        target: server
+      volumes:
+        - gocd_artifacts:/artifacts:z
+      restart: unless-stopped
+      depends_on:
+        - db
+      networks:
+        - ci
+      ports:
+        - "8153:8153"
+
+  gocd-agent-1:
+    container_name: gocd-agent-1
+    environment:
+      - GOCD_SERVER=${GOCD_SERVER:-gocd-server}
+      - AGENT_REGISTER_KEY=${AGENT_REGISTER_KEY}
+    build:
+      context: gocd
+      target: agent
+    restart: unless-stopped
+    depends_on:
+      - gocd-server
+    networks:
+      - ci
+
+#  gocd-agent-2:
+#    container_name: gocd-agent-2
+#    environment:
+#      - GOCD_SERVER=${GOCD_SERVER:-gocd-server}
+#      - AGENT_REGISTER_KEY=${AGENT_REGISTER_KEY}
+#    build:
+#      context: gocd
+#      target: agent
+#    restart: unless-stopped
+#    depends_on:
+#      - gocd-server
+#    networks:
+#      - ci
